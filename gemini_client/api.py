@@ -1,4 +1,5 @@
 import json
+import time
 import requests
 from typing import Union, Generator
 
@@ -7,7 +8,7 @@ class GeminiAPI:
     BASE_URL = "https://gemini.google.com"
     API_ENDPOINT = "/_/BardChatUi/data/assistant.lamda.BardFrontendService/StreamGenerate"
 
-    def __init__(self):
+    def __init__(self, timeout=60, retries=3):
         self.session = requests.Session()
         self.session.headers.update({
             "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36",
@@ -17,6 +18,8 @@ class GeminiAPI:
         })
         self.conversation_id = None
         self.response_id = None
+        self.timeout = timeout
+        self.retries = retries
 
     def _build_payload(self, message: str) -> dict:
         inner = [
@@ -65,22 +68,32 @@ class GeminiAPI:
         url = f"{self.BASE_URL}{self.API_ENDPOINT}"
         payload = self._build_payload(message)
 
-        try:
-            response = self.session.post(url, data=payload, timeout=30)
-            if response.status_code != 200:
-                raise Exception(f"Status {response.status_code}")
+        last_error = None
+        for attempt in range(self.retries):
+            try:
+                response = self.session.post(url, data=payload, timeout=self.timeout)
+                if response.status_code != 200:
+                    raise Exception(f"Status {response.status_code}")
 
-            result = self._parse_response(response.text)
+                result = self._parse_response(response.text)
 
-            if stream:
-                def word_gen():
-                    for word in result.split():
-                        yield word + " "
-                return word_gen()
-            return result
+                if stream:
+                    def word_gen():
+                        for word in result.split():
+                            yield word + " "
+                    return word_gen()
+                return result
 
-        except Exception as e:
-            raise Exception(f"API error: {e}")
+            except (requests.Timeout, requests.ConnectionError) as e:
+                last_error = e
+                if attempt < self.retries - 1:
+                    wait = (attempt + 1) * 2
+                    print(f"Timeout, retrying in {wait}s... (attempt {attempt + 1}/{self.retries})")
+                    time.sleep(wait)
+                    continue
+                raise Exception(f"API error after {self.retries} retries: {e}")
+            except Exception as e:
+                raise Exception(f"API error: {e}")
 
 
 def query(message: str) -> str:
