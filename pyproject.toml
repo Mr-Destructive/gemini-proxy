@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "gemini-client"
+version = "0.1.0"
+description = "Gemini API client - free, anonymous access"
+requires-python = ">=3.7"
+dependencies = ["requests>=2.31.0"]
+
+[project.scripts]
+gemini = "gemini_client.cli:main"
